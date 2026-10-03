@@ -96,3 +96,27 @@ typedef struct
 هر حافظه‌ای که در Init ثبت می‌شود باید تا پایان Lifetime مربوط به Instance معتبر باقی بماند.
 
 Pointer به storage محلی تابعی که پس از Init از Scope خارج می‌شود معتبر نیست.
+
+
+## 8. ساختار Metadata نسخه فعلی
+
+ساختار تأییدشده اولیه:
+
+```c
+typedef uint8_t csv_slot_state_t;
+
+typedef struct
+{
+    uint16_t len;
+    csv_slot_state_t state;
+    uint8_t reserved;
+} csv_slot_meta_t;
+```
+
+قیود این تصمیم:
+
+- `slot_size` نباید از `UINT16_MAX` بیشتر شود.
+- `reserved` در initialization باید صفر شود.
+- ساختار نباید با `packed` تعریف شود، مگر اینکه در آینده دلیل معماری مشخصی ثبت شود.
+- اندازه واقعی ساختار باید با `sizeof(csv_slot_meta_t)` سنجیده شود و نباید صرفاً از جمع اندازه اعضا فرض شود.
+- semantics مربوط به هم‌زمانی و دسترسی Producer/Consumer به `state` هنوز در Buffer Pool contract نهایی می‌شود.
