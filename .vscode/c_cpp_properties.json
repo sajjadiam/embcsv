@@ -3,10 +3,19 @@
     {
       "name": "embcsv",
       "includePath": [
-        "${workspaceFolder}/include"
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/include/**"
       ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}/include",
+          "${workspaceFolder}/src"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      },
       "defines": [],
-      "cStandard": "c11"
+      "cStandard": "c11",
+      "intelliSenseMode": "${default}"
     }
   ],
   "version": 4
