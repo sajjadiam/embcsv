@@ -176,3 +176,30 @@ Core shall پیش از نوشتن delimiter یا Field، ظرفیت موردنی
 
 ### FIELD-05
 محاسبه ظرفیت String shall اثر quoting و escaping CSV را در نظر بگیرد.
+
+
+## Runtime Context Requirements
+
+### CTX-01
+v1 shall maintain at most one sink request in `IN_FLIGHT` state per embcsv instance.
+
+### CTX-02
+`producer_index` shall identify the active slot while a row is being built; a separate active-slot field shall not be required.
+
+### CTX-03
+`consumer_index` shall identify the single in-flight slot when asynchronous output is pending; a separate in-flight-slot field shall not be required.
+
+### CTX-04
+The runtime context shall retain a persistent completion descriptor suitable for asynchronous sink lifetime requirements.
+
+### CTX-05
+An asynchronous completion error shall not silently discard the affected CSV record.
+
+### CTX-06
+The runtime context shall remain at a stable address after successful initialization while it is in use or while output is pending.
+
+### CTX-07
+`row_has_field` shall be tracked independently from encoded byte length.
+
+### CTX-08
+Concurrent access to the same v1 instance shall require external serialization. `volatile` shall not be used as a substitute for synchronization.
