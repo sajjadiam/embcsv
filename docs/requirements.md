@@ -131,3 +131,30 @@ Payload و Metadata از یکدیگر جدا نگهداری می‌شوند.
 - Hardware Integration Test
 
 عبارت‌هایی مانند «سریع»، «کم‌حافظه» و «مقاوم» بدون معیار قابل اندازه‌گیری Requirement معتبر محسوب نمی‌شوند.
+
+
+## Configuration Requirements
+
+### CFG-01
+`embcsv_config_t` shall contain `struct_size` for configuration-layout validation and controlled API evolution.
+
+### CFG-02
+Payload storage and metadata storage shall both expose their capacities explicitly through `buffer_size` and `slots_size`.
+
+### CFG-03
+v1 shall use fixed-size slots. Variable-sized slots are outside the current scope.
+
+### CFG-04
+`slot_count` and `slot_size` shall use 16-bit unsigned storage.
+
+### CFG-05
+The sink descriptor shall be copied by value during initialization. Ownership and lifetime of the object referenced by `sink.ctx` remain the caller/backend responsibility.
+
+### CFG-06
+Float and double formatting precision shall be configurable per instance.
+
+### CFG-07
+v1 shall use comma as the delimiter and CRLF as the record terminator. Custom CSV dialect configuration is outside the current v1 scope.
+
+### CFG-08
+Initialization shall validate payload and metadata capacity without relying on overflow-prone unchecked multiplication.
