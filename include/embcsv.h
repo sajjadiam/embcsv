@@ -386,6 +386,120 @@ typedef struct
 
 } embcsv_config_t;
 
+
+/* -------------------------------------------------------------------------- */
+/* Runtime context                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Storage type used for the logical state of one embcsv instance.
+ */
+typedef uint8_t embcsv_state_t;
+
+/** @brief Instance has not been initialized successfully. */
+#define EMBCSV_STATE_UNINITIALIZED \
+    ((embcsv_state_t)0U)
+
+/** @brief Instance is initialized and no row is currently being built. */
+#define EMBCSV_STATE_READY \
+    ((embcsv_state_t)1U)
+
+/** @brief A row is currently being encoded into the producer slot. */
+#define EMBCSV_STATE_BUILDING_ROW \
+    ((embcsv_state_t)2U)
+
+/**
+ * @brief Runtime context of one embcsv instance.
+ *
+ * @details
+ * The caller owns the context storage, but all members are private by
+ * contract and shall not be modified directly by application code.
+ *
+ * The instance stores only runtime state required after initialization.
+ * Configuration capacities used only for validation, such as buffer_size and
+ * slots_size, are intentionally not duplicated here.
+ *
+ * @par Stable address requirement
+ * After successful initialization, this object shall remain at the same
+ * address while it is in use or while any sink request is pending. The
+ * internal asynchronous completion route refers back to this instance.
+ *
+ * @par Concurrency
+ * v1 uses a single-producer/single-consumer model with at most one sink
+ * request in flight. Concurrent access to the same instance shall be
+ * externally serialized. volatile is intentionally not used as a
+ * synchronization mechanism.
+ */
+typedef struct embcsv
+{
+    /** Caller-owned contiguous payload storage. */
+    uint8_t *buffer;
+
+    /** Caller-owned metadata array corresponding to payload slots. */
+    embcsv_slot_meta_t *slots;
+
+    /** Output sink copied by value from embcsv_config_t during initialization. */
+    embcsv_sink_t sink;
+
+    /**
+     * Persistent completion descriptor used for asynchronous submissions.
+     *
+     * Its callback context refers to this embcsv instance, therefore the
+     * instance address shall remain stable after initialization.
+     */
+    embcsv_sink_completion_t completion;
+
+    /**
+     * Latched result of a completed asynchronous operation.
+     *
+     * EMBCSV_OK means no unreported asynchronous error is pending.
+     * A negative status is reported by embcsv_process() before retrying or
+     * advancing further output work.
+     */
+    embcsv_status_t async_status;
+
+    /** Capacity in bytes of each fixed-size payload slot. */
+    uint16_t slot_size;
+
+    /** Number of slots in the fixed-size buffer pool. */
+    uint16_t slot_count;
+
+    /**
+     * Index of the next producer slot.
+     *
+     * While state is EMBCSV_STATE_BUILDING_ROW, this index also identifies
+     * the slot currently in EMBCSV_SLOT_FILLING state.
+     */
+    embcsv_slot_id_t producer_index;
+
+    /**
+     * Index of the oldest queued consumer slot.
+     *
+     * With the v1 single-in-flight invariant, an asynchronous
+     * EMBCSV_SLOT_IN_FLIGHT slot is always identified by this index.
+     */
+    embcsv_slot_id_t consumer_index;
+
+    /** Number of fractional digits used for float formatting. */
+    uint8_t float_precision;
+
+    /** Number of fractional digits used for double formatting. */
+    uint8_t double_precision;
+
+    /**
+     * Nonzero after at least one field has been appended to the active row.
+     *
+     * This cannot be derived from encoded row length because the first field
+     * may legally be an empty string and therefore contribute zero payload
+     * bytes before a following delimiter is required.
+     */
+    uint8_t row_has_field;
+
+    /** Current logical row-building state. */
+    embcsv_state_t state;
+
+} embcsv_t;
+
 #ifdef __cplusplus
 }
 #endif
