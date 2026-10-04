@@ -1,0 +1,13 @@
+{
+  "configurations": [
+    {
+      "name": "embcsv",
+      "includePath": [
+        "${workspaceFolder}/include"
+      ],
+      "defines": [],
+      "cStandard": "c11"
+    }
+  ],
+  "version": 4
+}
