@@ -318,6 +318,74 @@ typedef struct
 
 } embcsv_sink_t;
 
+
+/* -------------------------------------------------------------------------- */
+/* Configuration                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Runtime configuration for one embcsv instance.
+ *
+ * @details
+ * The caller supplies all payload and metadata storage. embcsv does not
+ * allocate heap memory. The sink descriptor is copied by value during
+ * initialization, while any object referenced by sink.ctx remains owned by
+ * the caller/backend.
+ *
+ * Slot payloads are fixed-size in v1.
+ */
+typedef struct
+{
+    /**
+     * Size of this structure in bytes.
+     *
+     * Must be initialized to sizeof(embcsv_config_t). Used for compatibility
+     * and validation when the structure evolves in later API versions.
+     */
+    size_t struct_size;
+
+    /** Caller-owned payload memory used for fixed-size CSV record slots. */
+    uint8_t *buffer;
+
+    /** Total payload-memory capacity in bytes. */
+    size_t buffer_size;
+
+    /** Caller-owned array containing metadata for each payload slot. */
+    embcsv_slot_meta_t *slots;
+
+    /** Total metadata-storage capacity in bytes. */
+    size_t slots_size;
+
+    /**
+     * Output sink descriptor.
+     *
+     * The descriptor itself is copied by value during initialization.
+     * Ownership of the object referenced by sink.ctx remains with the caller.
+     */
+    embcsv_sink_t sink;
+
+    /**
+     * Capacity of each fixed-size payload slot in bytes.
+     *
+     * Must be greater than zero and must not exceed UINT16_MAX.
+     */
+    uint16_t slot_size;
+
+    /**
+     * Number of payload slots.
+     *
+     * Must be greater than zero.
+     */
+    uint16_t slot_count;
+
+    /** Number of fractional digits used when formatting float values. */
+    uint8_t float_precision;
+
+    /** Number of fractional digits used when formatting double values. */
+    uint8_t double_precision;
+
+} embcsv_config_t;
+
 #ifdef __cplusplus
 }
 #endif
