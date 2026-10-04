@@ -1,8 +1,9 @@
 {
   "configurations": [
     {
-      "name": "embcsv",
+      "name": "windows-gcc-x64",
       "includePath": [
+        "${workspaceFolder}/**",
         "${workspaceFolder}/include",
         "${workspaceFolder}/include/**"
       ],
@@ -15,7 +16,9 @@
       },
       "defines": [],
       "cStandard": "c11",
-      "intelliSenseMode": "${default}"
+      "intelliSenseMode": "windows-gcc-x64",
+      "cppStandard": "${default}",
+      "compilerPath": "C:/Program Files/x86_64-8.1.0-win32-seh-rt_v6-rev0/bin/gcc.exe"
     }
   ],
   "version": 4

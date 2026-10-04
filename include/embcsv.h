@@ -72,8 +72,7 @@ extern "C" {
  * @note Positive values are non-error states.
  * @note Negative values indicate errors.
  */
-typedef enum
-{
+typedef enum {
     /** Operation completed successfully. */
     EMBCSV_OK = 0,
 
@@ -105,8 +104,10 @@ typedef enum
     EMBCSV_EIO = -6,
 
     /** A bounded wait exceeded its configured timeout. */
-    EMBCSV_ETIMEOUT = -7
+    EMBCSV_ETIMEOUT = -7,
 
+    /** Runtime configuration is invalid, incomplete, or internally inconsistent. */
+    EMBCSV_ECONFIG = -8
 } embcsv_status_t;
 
 
@@ -131,16 +132,16 @@ typedef uint16_t embcsv_slot_id_t;
 typedef uint8_t embcsv_slot_state_t;
 
 /** @brief Slot is available for reuse. */
-#define EMBCSV_SLOT_FREE     ((embcsv_slot_state_t)0U)
+#define EMBCSV_SLOT_FREE        ((embcsv_slot_state_t)0U)
 
 /** @brief Slot is currently being filled by the CSV encoder. */
 #define EMBCSV_SLOT_FILLING     ((embcsv_slot_state_t)1U)
 
 /** @brief Slot contains a complete record waiting for submission. */
-#define EMBCSV_SLOT_READY     ((embcsv_slot_state_t)2U)
+#define EMBCSV_SLOT_READY       ((embcsv_slot_state_t)2U)
 
 /** @brief Slot is owned temporarily by an asynchronous backend. */
-#define EMBCSV_SLOT_IN_FLIGHT     ((embcsv_slot_state_t)3U)
+#define EMBCSV_SLOT_IN_FLIGHT   ((embcsv_slot_state_t)3U)
 
 /**
  * @brief Metadata associated with one fixed-size payload slot.
@@ -155,8 +156,7 @@ typedef uint8_t embcsv_slot_state_t;
  * @note The @ref reserved member shall be initialized to zero.
  * @note The current v1 design limits encoded row length to UINT16_MAX bytes.
  */
-typedef struct
-{
+typedef struct {
     /** Number of valid encoded bytes currently stored in the slot. */
     uint16_t len;
 
@@ -185,8 +185,7 @@ typedef struct
  * If the sink returns @ref EMBCSV_OK or a negative error code, the sink shall
  * not retain the payload pointer after returning.
  */
-typedef struct
-{
+typedef struct {
     /** Pointer to the first byte of the complete CSV record. */
     const uint8_t *data;
 
@@ -247,8 +246,7 @@ typedef void (*embcsv_sink_done_fn)(
  * The descriptor itself, and any object referenced by @ref ctx, shall remain
  * valid until completion if the sink returns @ref EMBCSV_PENDING.
  */
-typedef struct
-{
+typedef struct {
     /** Completion function to invoke for an asynchronous operation. */
     embcsv_sink_done_fn fn;
 
@@ -332,8 +330,7 @@ typedef embcsv_status_t (*embcsv_sink_submit_fn)(
  * Multiple embcsv instances may reference the same sink object if the backend
  * implementation itself supports that usage.
  */
-typedef struct
-{
+typedef struct {
     /** Function used to submit one complete CSV record. Must not be NULL. */
     embcsv_sink_submit_fn submit;
 
@@ -363,8 +360,7 @@ typedef struct
  *
  * Slot payloads are fixed-size in v1.
  */
-typedef struct
-{
+typedef struct {
     /**
      * Size of this structure in bytes.
      *
@@ -459,8 +455,7 @@ typedef uint8_t embcsv_state_t;
  * externally serialized. volatile is intentionally not used as a
  * synchronization mechanism.
  */
-typedef struct embcsv
-{
+typedef struct embcsv {
     /** Caller-owned contiguous payload storage. */
     uint8_t *buffer;
 
