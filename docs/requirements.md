@@ -203,3 +203,27 @@ The runtime context shall remain at a stable address after successful initializa
 
 ### CTX-08
 Concurrent access to the same v1 instance shall require external serialization. `volatile` shall not be used as a substitute for synchronization.
+
+
+## Public API Requirements
+
+### API-01
+v1 shall expose `embcsv_init()` as the only lifecycle initialization operation and shall not require a deinit operation.
+
+### API-02
+v1 shall expose explicit row lifecycle operations: `embcsv_begin_row()`, `embcsv_abort_row()`, and `embcsv_end_row()`.
+
+### API-03
+v1 shall expose field append operations for string, bool, i32, u32, i64, u64, f32, and f64.
+
+### API-04
+v1 shall expose `embcsv_process()` as a non-blocking cooperative output progress engine.
+
+### API-05
+The asynchronous completion callback shall update state only and shall not recursively submit the next queued record.
+
+### API-06
+v1 shall expose `embcsv_can_begin_row()` instead of a generic ambiguous busy query.
+
+### API-07
+v1 shall not expose `pending_count()` until a concrete external use case requires it.
