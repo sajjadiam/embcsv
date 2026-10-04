@@ -158,3 +158,21 @@ v1 shall use comma as the delimiter and CRLF as the record terminator. Custom CS
 
 ### CFG-08
 Initialization shall validate payload and metadata capacity without relying on overflow-prone unchecked multiplication.
+
+
+## Field Append Requirements
+
+### FIELD-01
+تمام عملیات `embcsv_add_*()` shall در سطح Field اتمیک باشند.
+
+### FIELD-02
+Core shall پیش از نوشتن delimiter یا Field، ظرفیت موردنیاز خروجی encode‌شده را بررسی کند.
+
+### FIELD-03
+در صورت کمبود ظرفیت، Row موجود shall بدون تغییر باقی بماند و `EMBCSV_EROW_TOO_LARGE` بازگردانده شود.
+
+### FIELD-04
+فضای لازم برای `CRLF` shall هنگام افزودن Fieldها رزرو شود تا پایان Record قابل تضمین باشد.
+
+### FIELD-05
+محاسبه ظرفیت String shall اثر quoting و escaping CSV را در نظر بگیرد.
