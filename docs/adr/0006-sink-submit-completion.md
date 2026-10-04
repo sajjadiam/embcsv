@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -74,4 +74,4 @@ typedef struct
 
 ## وضعیت
 
-این ADR تا تأیید نهایی Public API در حالت Proposed باقی می‌ماند.
+این قرارداد برای ادامه طراحی v1 پذیرفته شد.
