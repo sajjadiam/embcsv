@@ -17,9 +17,38 @@
  * Unless explicitly documented otherwise, concurrent access to the same
  * embcsv instance requires external synchronization.
  *
+ * @par Execution model
+ * CSV encoding and row construction are synchronous CPU operations. Output
+ * submission is progressed explicitly through embcsv_process(). A sink may
+ * complete a submission synchronously or return EMBCSV_PENDING and complete
+ * it later through the completion callback.
+ *
+ * The completion callback only updates embcsv state. It shall not recursively
+ * advance the output pipeline or submit the next record. Application code
+ * progresses queued output by calling embcsv_process() again.
+ *
+ * @par Ownership
+ * All storage supplied to embcsv remains caller-owned. embcsv borrows payload
+ * and metadata storage for the lifetime of the initialized instance.
+ *
+ * @par Threading
+ * The v1 API does not provide internal locking. Concurrent access to the same
+ * embcsv instance requires external serialization.
+ *
  * @par ISR usage
- * Synchronous APIs are not considered ISR-safe by default. Asynchronous sink
- * behavior from ISR context depends on the configured backend contract.
+ * Public row-building and processing APIs are not considered ISR-safe by
+ * default. A backend completion callback may execute in ISR context only when
+ * access to the same embcsv instance is externally serialized according to
+ * the backend contract.
+ *
+ * @par CSV dialect
+ * v1 uses comma (',') as the field delimiter and CRLF ("\\r\\n") as the
+ * record terminator. Custom delimiters and record terminators are outside the
+ * current v1 scope.
+ *
+ * @par Error model
+ * EMBCSV_OK indicates completed success, EMBCSV_PENDING indicates accepted
+ * asynchronous work, and negative embcsv_status_t values indicate errors.
  */
 
 #ifndef EMBCSV_H
@@ -499,6 +528,382 @@ typedef struct embcsv
     embcsv_state_t state;
 
 } embcsv_t;
+
+
+/* -------------------------------------------------------------------------- */
+/* Public API                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Initialize one embcsv instance.
+ *
+ * @param csv
+ * Pointer to caller-owned runtime context storage.
+ *
+ * @param cfg
+ * Pointer to a validated runtime configuration.
+ *
+ * @return
+ * - @ref EMBCSV_OK on successful initialization.
+ * - @ref EMBCSV_EINVAL if a required argument or configuration field is
+ *   invalid.
+ *
+ * @pre
+ * - @p csv and @p cfg shall not be NULL.
+ * - cfg->struct_size shall describe a compatible embcsv_config_t layout.
+ * - cfg->buffer and cfg->slots shall reference caller-owned storage that
+ *   remains valid for the lifetime of @p csv.
+ * - cfg->slot_size and cfg->slot_count shall be nonzero.
+ * - cfg->buffer_size shall be sufficient for all configured payload slots.
+ * - cfg->slots_size shall be sufficient for all slot metadata.
+ * - cfg->sink.submit shall not be NULL.
+ *
+ * @post
+ * On success:
+ * - the instance is in @ref EMBCSV_STATE_READY,
+ * - all slots are initialized to @ref EMBCSV_SLOT_FREE,
+ * - producer and consumer indices are reset,
+ * - the sink descriptor is copied by value into the runtime context.
+ *
+ * @note
+ * embcsv performs no heap allocation.
+ *
+ * @warning
+ * After successful initialization, the @p csv object shall remain at a stable
+ * address while it is in use or while asynchronous output is pending.
+ */
+embcsv_status_t embcsv_init(
+    embcsv_t *csv,
+    const embcsv_config_t *cfg
+);
+
+/**
+ * @brief Begin construction of a new CSV row.
+ *
+ * @param csv
+ * Initialized embcsv instance.
+ *
+ * @return
+ * - @ref EMBCSV_OK if a free producer slot was claimed successfully.
+ * - @ref EMBCSV_ENO_BUFFER if no free slot is available.
+ * - @ref EMBCSV_ESTATE if a row is already being built or the instance state
+ *   does not allow a new row.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @post
+ * On success the instance enters @ref EMBCSV_STATE_BUILDING_ROW and the
+ * producer slot enters @ref EMBCSV_SLOT_FILLING.
+ *
+ * @note
+ * This function is non-blocking. It does not wait for a slot to become free.
+ */
+embcsv_status_t embcsv_begin_row(
+    embcsv_t *csv
+);
+
+/**
+ * @brief Abort the row currently being constructed.
+ *
+ * @param csv
+ * Initialized embcsv instance.
+ *
+ * @return
+ * - @ref EMBCSV_OK if the active row was discarded successfully.
+ * - @ref EMBCSV_ESTATE if no row is currently being built.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @post
+ * The active producer slot is returned to @ref EMBCSV_SLOT_FREE, its encoded
+ * length is reset, row-building state is cleared, and producer_index is not
+ * advanced.
+ *
+ * @note
+ * This operation affects only the row currently in
+ * @ref EMBCSV_STATE_BUILDING_ROW. Already queued or in-flight rows are not
+ * modified.
+ */
+embcsv_status_t embcsv_abort_row(
+    embcsv_t *csv
+);
+
+/**
+ * @brief Commit the current row to the output queue.
+ *
+ * @param csv
+ * Initialized embcsv instance currently building a row.
+ *
+ * @return
+ * - @ref EMBCSV_OK if CRLF was appended and the row was committed.
+ * - @ref EMBCSV_ESTATE if no row is currently being built.
+ * - @ref EMBCSV_EROW_TOO_LARGE if the row cannot be terminated safely within
+ *   the configured slot capacity.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @post
+ * On success:
+ * - the row slot transitions from @ref EMBCSV_SLOT_FILLING to
+ *   @ref EMBCSV_SLOT_READY,
+ * - producer_index advances to the next slot,
+ * - the instance returns to @ref EMBCSV_STATE_READY.
+ *
+ * @note
+ * Field append operations reserve enough capacity for CRLF, therefore
+ * EMBCSV_EROW_TOO_LARGE from this function should normally indicate an
+ * internal invariant violation or corrupted state rather than routine input.
+ *
+ * @note
+ * This function does not submit the record to the sink. Output progression is
+ * performed by @ref embcsv_process.
+ */
+embcsv_status_t embcsv_end_row(
+    embcsv_t *csv
+);
+
+/**
+ * @brief Append a string field to the active CSV row.
+ *
+ * @param csv
+ * Initialized embcsv instance in @ref EMBCSV_STATE_BUILDING_ROW.
+ *
+ * @param value
+ * Null-terminated input string.
+ *
+ * @return
+ * - @ref EMBCSV_OK on success.
+ * - @ref EMBCSV_EROW_TOO_LARGE if the complete encoded field does not fit.
+ * - @ref EMBCSV_ESTATE if no row is currently being built.
+ * - @ref EMBCSV_EINVAL if @p csv or @p value is NULL.
+ *
+ * @details
+ * CSV quoting and escaping are applied as required. Comma, double quote, CR,
+ * and LF are handled according to the v1 CSV dialect.
+ *
+ * @par Transactional guarantee
+ * The operation is atomic at field level. Capacity is checked before any
+ * delimiter or encoded field bytes are committed. On
+ * @ref EMBCSV_EROW_TOO_LARGE the existing row remains unchanged.
+ */
+embcsv_status_t embcsv_add_string(
+    embcsv_t *csv,
+    const char *value
+);
+
+/**
+ * @brief Append a boolean field to the active CSV row.
+ *
+ * @param csv
+ * Initialized embcsv instance in @ref EMBCSV_STATE_BUILDING_ROW.
+ *
+ * @param value
+ * Boolean value to encode.
+ *
+ * @return
+ * - @ref EMBCSV_OK on success.
+ * - @ref EMBCSV_EROW_TOO_LARGE if the complete field does not fit.
+ * - @ref EMBCSV_ESTATE if no row is currently being built.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_bool(
+    embcsv_t *csv,
+    bool value
+);
+
+/**
+ * @brief Append a signed 32-bit integer field.
+ *
+ * @param csv Initialized embcsv instance currently building a row.
+ * @param value Value to encode in base-10 textual form.
+ *
+ * @return
+ * @ref EMBCSV_OK, @ref EMBCSV_EROW_TOO_LARGE, @ref EMBCSV_ESTATE, or
+ * @ref EMBCSV_EINVAL.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_i32(
+    embcsv_t *csv,
+    int32_t value
+);
+
+/**
+ * @brief Append an unsigned 32-bit integer field.
+ *
+ * @param csv Initialized embcsv instance currently building a row.
+ * @param value Value to encode in base-10 textual form.
+ *
+ * @return
+ * @ref EMBCSV_OK, @ref EMBCSV_EROW_TOO_LARGE, @ref EMBCSV_ESTATE, or
+ * @ref EMBCSV_EINVAL.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_u32(
+    embcsv_t *csv,
+    uint32_t value
+);
+
+/**
+ * @brief Append a signed 64-bit integer field.
+ *
+ * @param csv Initialized embcsv instance currently building a row.
+ * @param value Value to encode in base-10 textual form.
+ *
+ * @return
+ * @ref EMBCSV_OK, @ref EMBCSV_EROW_TOO_LARGE, @ref EMBCSV_ESTATE, or
+ * @ref EMBCSV_EINVAL.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_i64(
+    embcsv_t *csv,
+    int64_t value
+);
+
+/**
+ * @brief Append an unsigned 64-bit integer field.
+ *
+ * @param csv Initialized embcsv instance currently building a row.
+ * @param value Value to encode in base-10 textual form.
+ *
+ * @return
+ * @ref EMBCSV_OK, @ref EMBCSV_EROW_TOO_LARGE, @ref EMBCSV_ESTATE, or
+ * @ref EMBCSV_EINVAL.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_u64(
+    embcsv_t *csv,
+    uint64_t value
+);
+
+/**
+ * @brief Append a single-precision floating-point field.
+ *
+ * @param csv
+ * Initialized embcsv instance currently building a row.
+ *
+ * @param value
+ * Floating-point value to encode.
+ *
+ * @return
+ * - @ref EMBCSV_OK on success.
+ * - @ref EMBCSV_EROW_TOO_LARGE if the complete formatted field does not fit.
+ * - @ref EMBCSV_ESTATE if no row is currently being built.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @details
+ * Fractional formatting uses the per-instance float_precision configuration.
+ * The exact policy for NaN, positive infinity, and negative infinity shall be
+ * documented with the formatter implementation before v1.0 is frozen.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_f32(
+    embcsv_t *csv,
+    float value
+);
+
+/**
+ * @brief Append a double-precision floating-point field.
+ *
+ * @param csv
+ * Initialized embcsv instance currently building a row.
+ *
+ * @param value
+ * Floating-point value to encode.
+ *
+ * @return
+ * - @ref EMBCSV_OK on success.
+ * - @ref EMBCSV_EROW_TOO_LARGE if the complete formatted field does not fit.
+ * - @ref EMBCSV_ESTATE if no row is currently being built.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @details
+ * Fractional formatting uses the per-instance double_precision configuration.
+ * The exact policy for NaN, positive infinity, and negative infinity shall be
+ * documented with the formatter implementation before v1.0 is frozen.
+ *
+ * @par Transactional guarantee
+ * On failure due to insufficient capacity, the active row is unchanged.
+ */
+embcsv_status_t embcsv_add_f64(
+    embcsv_t *csv,
+    double value
+);
+
+/**
+ * @brief Progress queued CSV output without blocking.
+ *
+ * @param csv
+ * Initialized embcsv instance.
+ *
+ * @return
+ * - @ref EMBCSV_OK if no asynchronous wait remains after this call or if
+ *   there was no output work to start.
+ * - @ref EMBCSV_PENDING if a sink request is currently in flight after this
+ *   call.
+ * - @ref EMBCSV_EBUSY if output cannot be progressed immediately due to a
+ *   backend/resource condition that did not accept a new request.
+ * - @ref EMBCSV_EIO, @ref EMBCSV_ETIMEOUT, or another negative status if a
+ *   latched asynchronous completion error or sink submission error is
+ *   reported.
+ * - @ref EMBCSV_EINVAL if @p csv is NULL.
+ *
+ * @details
+ * At most one sink request may be in flight per embcsv instance in v1.
+ *
+ * If no request is in flight and the consumer slot is
+ * @ref EMBCSV_SLOT_READY, this function submits one complete record to the
+ * configured sink.
+ *
+ * If the sink returns @ref EMBCSV_OK, the consumed slot is released
+ * synchronously and the consumer index advances.
+ *
+ * If the sink returns @ref EMBCSV_PENDING, the slot becomes
+ * @ref EMBCSV_SLOT_IN_FLIGHT and remains immutable until completion.
+ *
+ * A completion callback never recursively calls the sink and never advances
+ * the next queued record by itself. Application code calls embcsv_process()
+ * again to make further progress.
+ *
+ * @note
+ * This function is a cooperative progress engine and shall not perform an
+ * unbounded wait.
+ */
+embcsv_status_t embcsv_process(
+    embcsv_t *csv
+);
+
+/**
+ * @brief Query whether a new row can be started immediately.
+ *
+ * @param csv
+ * Initialized embcsv instance.
+ *
+ * @return
+ * true if embcsv_begin_row() can claim the current producer slot without
+ * waiting; false otherwise.
+ *
+ * @details
+ * This query is intentionally more precise than a generic "busy" flag. Output
+ * may be in flight while another slot is still available for row production.
+ *
+ * @note
+ * The result is only a snapshot. In a concurrently accessed system, external
+ * synchronization is required if the caller needs the result and subsequent
+ * embcsv_begin_row() call to be atomic with respect to other contexts.
+ */
+bool embcsv_can_begin_row(
+    const embcsv_t *csv
+);
 
 #ifdef __cplusplus
 }
