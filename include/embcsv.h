@@ -403,10 +403,16 @@ typedef struct {
      */
     uint16_t slot_count;
 
-    /** Number of fractional digits used when formatting float values. */
+    /**
+     * Number of fractional digits used when formatting float values.
+     * Valid range: 0..9.
+     */
     uint8_t float_precision;
 
-    /** Number of fractional digits used when formatting double values. */
+    /**
+     * Number of fractional digits used when formatting double values.
+     * Valid range: 0..17.
+     */
     uint8_t double_precision;
 
 } embcsv_config_t;
@@ -764,9 +770,16 @@ embcsv_status_t embcsv_add_u64(embcsv_t *csv, uint64_t value);
  * - @ref EMBCSV_EINVAL if @p csv is NULL.
  *
  * @details
- * Fractional formatting uses the per-instance float_precision configuration.
- * The exact policy for NaN, positive infinity, and negative infinity shall be
- * documented with the formatter implementation before v1.0 is frozen.
+ * Fractional formatting uses the per-instance float_precision configuration
+ * in the range 0..9. Formatting is locale-independent and uses '.' as the
+ * decimal point.
+ *
+ * Finite values use fixed notation for decimal exponents from -4 through +6
+ * and scientific notation outside that range. Scientific notation uses a
+ * lowercase 'e', an explicit exponent sign, and at least two exponent digits.
+ *
+ * Rounding is round-to-nearest, ties-to-even. Negative zero is preserved.
+ * Special values are encoded as "nan", "inf", and "-inf".
  *
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
@@ -789,9 +802,16 @@ embcsv_status_t embcsv_add_f32(embcsv_t *csv, float value);
  * - @ref EMBCSV_EINVAL if @p csv is NULL.
  *
  * @details
- * Fractional formatting uses the per-instance double_precision configuration.
- * The exact policy for NaN, positive infinity, and negative infinity shall be
- * documented with the formatter implementation before v1.0 is frozen.
+ * Fractional formatting uses the per-instance double_precision configuration
+ * in the range 0..17. Formatting is locale-independent and uses '.' as the
+ * decimal point.
+ *
+ * Finite values use fixed notation for decimal exponents from -4 through +6
+ * and scientific notation outside that range. Scientific notation uses a
+ * lowercase 'e', an explicit exponent sign, and at least two exponent digits.
+ *
+ * Rounding is round-to-nearest, ties-to-even. Negative zero is preserved.
+ * Special values are encoded as "nan", "inf", and "-inf".
  *
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
