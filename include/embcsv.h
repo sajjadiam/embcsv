@@ -422,16 +422,13 @@ typedef struct {
 typedef uint8_t embcsv_state_t;
 
 /** @brief Instance has not been initialized successfully. */
-#define EMBCSV_STATE_UNINITIALIZED \
-    ((embcsv_state_t)0U)
+#define EMBCSV_STATE_UNINITIALIZED  ((embcsv_state_t)0U)
 
 /** @brief Instance is initialized and no row is currently being built. */
-#define EMBCSV_STATE_READY \
-    ((embcsv_state_t)1U)
+#define EMBCSV_STATE_READY          ((embcsv_state_t)1U)
 
 /** @brief A row is currently being encoded into the producer slot. */
-#define EMBCSV_STATE_BUILDING_ROW \
-    ((embcsv_state_t)2U)
+#define EMBCSV_STATE_BUILDING_ROW   ((embcsv_state_t)2U)
 
 /**
  * @brief Runtime context of one embcsv instance.
@@ -612,9 +609,7 @@ embcsv_status_t embcsv_begin_row(embcsv_t *csv);
  * @ref EMBCSV_STATE_BUILDING_ROW. Already queued or in-flight rows are not
  * modified.
  */
-embcsv_status_t embcsv_abort_row(
-    embcsv_t *csv
-);
+embcsv_status_t embcsv_abort_row(embcsv_t *csv);
 
 /**
  * @brief Commit the current row to the output queue.
@@ -645,9 +640,7 @@ embcsv_status_t embcsv_abort_row(
  * This function does not submit the record to the sink. Output progression is
  * performed by @ref embcsv_process.
  */
-embcsv_status_t embcsv_end_row(
-    embcsv_t *csv
-);
+embcsv_status_t embcsv_end_row(embcsv_t *csv);
 
 /**
  * @brief Append a string field to the active CSV row.
@@ -673,10 +666,7 @@ embcsv_status_t embcsv_end_row(
  * delimiter or encoded field bytes are committed. On
  * @ref EMBCSV_EROW_TOO_LARGE the existing row remains unchanged.
  */
-embcsv_status_t embcsv_add_string(
-    embcsv_t *csv,
-    const char *value
-);
+embcsv_status_t embcsv_add_string(embcsv_t *csv, const char *value);
 
 /**
  * @brief Append a boolean field to the active CSV row.
@@ -696,10 +686,7 @@ embcsv_status_t embcsv_add_string(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_bool(
-    embcsv_t *csv,
-    bool value
-);
+embcsv_status_t embcsv_add_bool(embcsv_t *csv, bool value);
 
 /**
  * @brief Append a signed 32-bit integer field.
@@ -714,10 +701,7 @@ embcsv_status_t embcsv_add_bool(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_i32(
-    embcsv_t *csv,
-    int32_t value
-);
+embcsv_status_t embcsv_add_i32(embcsv_t *csv, int32_t value);
 
 /**
  * @brief Append an unsigned 32-bit integer field.
@@ -732,10 +716,7 @@ embcsv_status_t embcsv_add_i32(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_u32(
-    embcsv_t *csv,
-    uint32_t value
-);
+embcsv_status_t embcsv_add_u32(embcsv_t *csv, uint32_t value);
 
 /**
  * @brief Append a signed 64-bit integer field.
@@ -750,10 +731,7 @@ embcsv_status_t embcsv_add_u32(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_i64(
-    embcsv_t *csv,
-    int64_t value
-);
+embcsv_status_t embcsv_add_i64(embcsv_t *csv, int64_t value);
 
 /**
  * @brief Append an unsigned 64-bit integer field.
@@ -768,10 +746,7 @@ embcsv_status_t embcsv_add_i64(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_u64(
-    embcsv_t *csv,
-    uint64_t value
-);
+embcsv_status_t embcsv_add_u64(embcsv_t *csv, uint64_t value);
 
 /**
  * @brief Append a single-precision floating-point field.
@@ -796,10 +771,7 @@ embcsv_status_t embcsv_add_u64(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_f32(
-    embcsv_t *csv,
-    float value
-);
+embcsv_status_t embcsv_add_f32(embcsv_t *csv, float value);
 
 /**
  * @brief Append a double-precision floating-point field.
@@ -824,10 +796,7 @@ embcsv_status_t embcsv_add_f32(
  * @par Transactional guarantee
  * On failure due to insufficient capacity, the active row is unchanged.
  */
-embcsv_status_t embcsv_add_f64(
-    embcsv_t *csv,
-    double value
-);
+embcsv_status_t embcsv_add_f64(embcsv_t *csv, double value);
 
 /**
  * @brief Progress queued CSV output without blocking.
@@ -868,9 +837,7 @@ embcsv_status_t embcsv_add_f64(
  * This function is a cooperative progress engine and shall not perform an
  * unbounded wait.
  */
-embcsv_status_t embcsv_process(
-    embcsv_t *csv
-);
+embcsv_status_t embcsv_process(embcsv_t *csv);
 
 /**
  * @brief Query whether a new row can be started immediately.
@@ -891,9 +858,7 @@ embcsv_status_t embcsv_process(
  * synchronization is required if the caller needs the result and subsequent
  * embcsv_begin_row() call to be atomic with respect to other contexts.
  */
-bool embcsv_can_begin_row(
-    const embcsv_t *csv
-);
+bool embcsv_can_begin_row(const embcsv_t *csv);
 
 #ifdef __cplusplus
 }

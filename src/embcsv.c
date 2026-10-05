@@ -47,6 +47,50 @@ static void embcsv_reset_runtime(embcsv_t *csv) {
     csv->state = EMBCSV_STATE_READY;
 }
 
+static void embcsv_on_sink_done(void *ctx, embcsv_slot_id_t slot_id, embcsv_status_t status){
+    embcsv_t *csv = (embcsv_t *)ctx;
+
+    if (!csv) return;
+
+    if ((slot_id >= csv->slot_count) || (slot_id != csv->consumer_index)) {
+        csv->async_status = EMBCSV_ESTATE;
+        return;
+    }
+
+    embcsv_slot_meta_t *slot = &csv->slots[slot_id];
+
+    if (slot->state != EMBCSV_SLOT_IN_FLIGHT) {
+        csv->async_status = EMBCSV_ESTATE;
+        return;
+    }
+
+    if (status == EMBCSV_OK) {
+        slot->len = 0U;
+        slot->state = EMBCSV_SLOT_FREE;
+
+        csv->consumer_index++;
+
+        if (csv->consumer_index >= csv->slot_count) csv->consumer_index = 0U;
+
+        return;
+    }
+
+    /*
+     * A completion callback must contain a final result.
+     * EMBCSV_PENDING is therefore invalid here.
+     */
+    if (status == EMBCSV_PENDING) {
+        csv->async_status = EMBCSV_ESTATE;
+        return;
+    }
+
+    /*
+     * Preserve the record for a future retry.
+     */
+    slot->state = EMBCSV_SLOT_READY;
+    csv->async_status = status;
+}
+
 embcsv_status_t embcsv_init(embcsv_t *csv, const embcsv_config_t *cfg) {
     if (!csv) return EMBCSV_EINVAL;
 
@@ -60,6 +104,8 @@ embcsv_status_t embcsv_init(embcsv_t *csv, const embcsv_config_t *cfg) {
     csv->slot_count         = cfg->slot_count;
     csv->float_precision    = cfg->float_precision;
     csv->double_precision   = cfg->double_precision;
+    csv->completion.fn      = embcsv_on_sink_done;
+    csv->completion.ctx     = csv;
 
      /*
      * Completion initialization will be added together with
