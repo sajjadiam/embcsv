@@ -398,12 +398,12 @@ static void test_async_success_and_ordering(void)
 
     assert(embcsv_init(&csv, &cfg) == EMBCSV_OK);
 
-    for (const char *text = "A"; *text <= 'C'; ++text)
-    {
-        char field[2] = {*text, '\0'};
+    static const char *const rows[] = {"A", "B", "C"};
 
+    for (size_t i = 0U; i < (sizeof(rows) / sizeof(rows[0])); ++i)
+    {
         assert(embcsv_begin_row(&csv) == EMBCSV_OK);
-        assert(embcsv_add_string(&csv, field) == EMBCSV_OK);
+        assert(embcsv_add_string(&csv, rows[i]) == EMBCSV_OK);
         assert(embcsv_end_row(&csv) == EMBCSV_OK);
     }
 
