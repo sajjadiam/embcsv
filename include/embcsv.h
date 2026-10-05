@@ -567,10 +567,7 @@ typedef struct embcsv {
  * After successful initialization, the @p csv object shall remain at a stable
  * address while it is in use or while asynchronous output is pending.
  */
-embcsv_status_t embcsv_init(
-    embcsv_t *csv,
-    const embcsv_config_t *cfg
-);
+embcsv_status_t embcsv_init(embcsv_t *csv, const embcsv_config_t *cfg);
 
 /**
  * @brief Begin construction of a new CSV row.
@@ -592,9 +589,7 @@ embcsv_status_t embcsv_init(
  * @note
  * This function is non-blocking. It does not wait for a slot to become free.
  */
-embcsv_status_t embcsv_begin_row(
-    embcsv_t *csv
-);
+embcsv_status_t embcsv_begin_row(embcsv_t *csv);
 
 /**
  * @brief Abort the row currently being constructed.
