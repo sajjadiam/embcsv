@@ -1,6 +1,7 @@
 #include "embcsv_float.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
