@@ -1,0 +1,329 @@
+name: float formatter verification
+
+on:
+  push:
+    branches:
+      - chatgpt-float-formatter
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Strict build
+        run: |
+          mkdir -p build
+          gcc -std=c11 \
+            -Wall -Wextra -Wpedantic \
+            -Wshadow -Wformat=2 -Wcast-align \
+            -Wconversion -Wsign-conversion \
+            -Werror \
+            -Iinclude -Isrc \
+            -c src/embcsv_float.c -o build/embcsv_float.o
+
+          gcc -std=c11 \
+            -Wall -Wextra -Wpedantic \
+            -Wshadow -Wformat=2 -Wcast-align \
+            -Wconversion -Wsign-conversion \
+            -Werror \
+            -Iinclude -Isrc \
+            -c src/embcsv.c -o build/embcsv.o
+
+          size build/embcsv_float.o build/embcsv.o
+
+      - name: Differential float tests
+        run: |
+          cat > /tmp/test_float.c <<'EOF'
+          #include "embcsv_float.h"
+
+          #include <math.h>
+          #include <stdint.h>
+          #include <stdio.h>
+          #include <string.h>
+          #include <locale.h>
+
+          static uint64_t rng_state = UINT64_C(0x9e3779b97f4a7c15);
+
+          static uint64_t rng64(void)
+          {
+              uint64_t x = rng_state;
+              x ^= x >> 12;
+              x ^= x << 25;
+              x ^= x >> 27;
+              rng_state = x;
+              return x * UINT64_C(2685821657736338717);
+          }
+
+          static void expected_f32(float v, unsigned p, char *buf, size_t n)
+          {
+              if (isnan(v)) {
+                  (void)snprintf(buf, n, "nan");
+                  return;
+              }
+
+              if (isinf(v)) {
+                  (void)snprintf(buf, n, signbit(v) ? "-inf" : "inf");
+                  return;
+              }
+
+              const double a = fabs((double)v);
+
+              if ((a == 0.0) || ((a >= 1e-4) && (a < 1e7)))
+                  (void)snprintf(buf, n, "%.*f", (int)p, (double)v);
+              else
+                  (void)snprintf(buf, n, "%.*e", (int)p, (double)v);
+          }
+
+          static void expected_f64(double v, unsigned p, char *buf, size_t n)
+          {
+              if (isnan(v)) {
+                  (void)snprintf(buf, n, "nan");
+                  return;
+              }
+
+              if (isinf(v)) {
+                  (void)snprintf(buf, n, signbit(v) ? "-inf" : "inf");
+                  return;
+              }
+
+              const double a = fabs(v);
+
+              if ((a == 0.0) || ((a >= 1e-4) && (a < 1e7)))
+                  (void)snprintf(buf, n, "%.*f", (int)p, v);
+              else
+                  (void)snprintf(buf, n, "%.*e", (int)p, v);
+          }
+
+          static int test_f32(uint32_t bits, unsigned p)
+          {
+              float value;
+              char actual[64] = {0};
+              char expected[64] = {0};
+              size_t len = 0U;
+
+              memcpy(&value, &bits, sizeof(value));
+
+              if (embcsv_float_format_f32(
+                      value,
+                      (uint8_t)p,
+                      actual,
+                      sizeof(actual) - 1U,
+                      &len) != EMBCSV_FLOAT_OK)
+              {
+                  fprintf(stderr, "f32 formatter status failure\n");
+                  return 1;
+              }
+
+              actual[len] = '\0';
+              expected_f32(value, p, expected, sizeof(expected));
+
+              if (strcmp(actual, expected) != 0) {
+                  fprintf(
+                      stderr,
+                      "f32 mismatch bits=%08x p=%u actual=[%s] expected=[%s]\n",
+                      bits,
+                      p,
+                      actual,
+                      expected);
+
+                  return 1;
+              }
+
+              return 0;
+          }
+
+          static int test_f64(uint64_t bits, unsigned p)
+          {
+              double value;
+              char actual[64] = {0};
+              char expected[64] = {0};
+              size_t len = 0U;
+
+              memcpy(&value, &bits, sizeof(value));
+
+              if (embcsv_float_format_f64(
+                      value,
+                      (uint8_t)p,
+                      actual,
+                      sizeof(actual) - 1U,
+                      &len) != EMBCSV_FLOAT_OK)
+              {
+                  fprintf(stderr, "f64 formatter status failure\n");
+                  return 1;
+              }
+
+              actual[len] = '\0';
+              expected_f64(value, p, expected, sizeof(expected));
+
+              if (strcmp(actual, expected) != 0) {
+                  fprintf(
+                      stderr,
+                      "f64 mismatch bits=%016llx p=%u actual=[%s] expected=[%s]\n",
+                      (unsigned long long)bits,
+                      p,
+                      actual,
+                      expected);
+
+                  return 1;
+              }
+
+              return 0;
+          }
+
+          int main(void)
+          {
+              (void)setlocale(LC_ALL, "C");
+
+              const uint32_t f32_edges[] = {
+                  UINT32_C(0x00000000),
+                  UINT32_C(0x80000000),
+                  UINT32_C(0x00000001),
+                  UINT32_C(0x80000001),
+                  UINT32_C(0x007fffff),
+                  UINT32_C(0x00800000),
+                  UINT32_C(0x3f000000),
+                  UINT32_C(0x3fc00000),
+                  UINT32_C(0x7f7fffff),
+                  UINT32_C(0x7f800000),
+                  UINT32_C(0xff800000),
+                  UINT32_C(0x7fc00000)
+              };
+
+              for (size_t i = 0U; i < sizeof(f32_edges) / sizeof(f32_edges[0]); ++i)
+                  for (unsigned p = 0U; p <= 9U; ++p)
+                      if (test_f32(f32_edges[i], p) != 0) return 1;
+
+              const uint64_t f64_edges[] = {
+                  UINT64_C(0x0000000000000000),
+                  UINT64_C(0x8000000000000000),
+                  UINT64_C(0x0000000000000001),
+                  UINT64_C(0x8000000000000001),
+                  UINT64_C(0x000fffffffffffff),
+                  UINT64_C(0x0010000000000000),
+                  UINT64_C(0x3fe0000000000000),
+                  UINT64_C(0x3ff8000000000000),
+                  UINT64_C(0x7fefffffffffffff),
+                  UINT64_C(0x7ff0000000000000),
+                  UINT64_C(0xfff0000000000000),
+                  UINT64_C(0x7ff8000000000000)
+              };
+
+              for (size_t i = 0U; i < sizeof(f64_edges) / sizeof(f64_edges[0]); ++i)
+                  for (unsigned p = 0U; p <= 17U; ++p)
+                      if (test_f64(f64_edges[i], p) != 0) return 1;
+
+              for (unsigned i = 0U; i < 200000U; ++i) {
+                  const uint32_t bits = (uint32_t)rng64();
+                  const unsigned p = (unsigned)(rng64() % 10U);
+                  if (test_f32(bits, p) != 0) return 1;
+              }
+
+              for (unsigned i = 0U; i < 100000U; ++i) {
+                  const uint64_t bits = rng64();
+                  const unsigned p = (unsigned)(rng64() % 18U);
+                  if (test_f64(bits, p) != 0) return 1;
+              }
+
+              puts("differential float tests: PASS");
+              return 0;
+          }
+          EOF
+
+          gcc -std=c11 -O2 \
+            -Wall -Wextra -Wpedantic -Werror \
+            -Isrc \
+            src/embcsv_float.c /tmp/test_float.c \
+            -o /tmp/test_float
+
+          /tmp/test_float
+
+      - name: embcsv integration smoke
+        run: |
+          cat > /tmp/test_integration.c <<'EOF'
+          #include "embcsv.h"
+
+          #include <stdint.h>
+          #include <stdio.h>
+          #include <string.h>
+
+          typedef struct {
+              uint8_t data[256];
+              size_t len;
+          } sink_ctx_t;
+
+          static embcsv_status_t sink_submit(
+              void *ctx,
+              const embcsv_sink_request_t *req,
+              const embcsv_sink_completion_t *completion)
+          {
+              sink_ctx_t *sink = (sink_ctx_t *)ctx;
+              (void)completion;
+
+              if (req->len > sizeof(sink->data)) return EMBCSV_EIO;
+
+              memcpy(sink->data, req->data, req->len);
+              sink->len = req->len;
+
+              return EMBCSV_OK;
+          }
+
+          int main(void)
+          {
+              uint8_t buffer[256];
+              embcsv_slot_meta_t slots[2];
+              embcsv_t csv;
+              sink_ctx_t sink = {{0}, 0U};
+
+              embcsv_config_t cfg = {
+                  .struct_size = sizeof(cfg),
+                  .buffer = buffer,
+                  .buffer_size = sizeof(buffer),
+                  .slots = slots,
+                  .slots_size = sizeof(slots),
+                  .sink = {
+                      .submit = sink_submit,
+                      .ctx = &sink
+                  },
+                  .slot_size = 128U,
+                  .slot_count = 2U,
+                  .float_precision = 3U,
+                  .double_precision = 17U
+              };
+
+              if (embcsv_init(&csv, &cfg) != EMBCSV_OK) return 1;
+              if (embcsv_begin_row(&csv) != EMBCSV_OK) return 2;
+
+              if (embcsv_add_f32(&csv, 1.25f) != EMBCSV_OK) return 3;
+              if (embcsv_add_f32(&csv, 0.0000123f) != EMBCSV_OK) return 4;
+              if (embcsv_add_f64(&csv, 1.2345678901234567) != EMBCSV_OK) return 5;
+
+              if (embcsv_end_row(&csv) != EMBCSV_OK) return 6;
+              if (embcsv_process(&csv) != EMBCSV_OK) return 7;
+
+              const char expected[] =
+                  "1.250,1.230e-05,1.23456789012345669\r\n";
+
+              if ((sink.len != sizeof(expected) - 1U) ||
+                  (memcmp(sink.data, expected, sizeof(expected) - 1U) != 0))
+              {
+                  fwrite(sink.data, 1U, sink.len, stderr);
+                  return 8;
+              }
+
+              puts("embcsv integration smoke: PASS");
+              return 0;
+          }
+          EOF
+
+          gcc -std=c11 \
+            -Wall -Wextra -Wpedantic \
+            -Wshadow -Wformat=2 -Wcast-align \
+            -Wconversion -Wsign-conversion \
+            -Werror \
+            -Iinclude -Isrc \
+            src/embcsv.c src/embcsv_float.c /tmp/test_integration.c \
+            -o /tmp/test_integration
+
+          /tmp/test_integration
