@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Generate German locale
+        run: |
+          sudo locale-gen de_DE.UTF-8
+
       - name: Build with strict warnings
         run: |
           mkdir -p build
