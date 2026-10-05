@@ -8,10 +8,9 @@
  */
 
 #include "embcsv.h"
-#include <stdio.h>
+#include "embcsv_float.h"
 
-#define EMBCSV_MAX_F32_PRECISION 9U
-#define EMBCSV_F32_TMP_SIZE      64U
+#include <string.h>
 
 static embcsv_status_t embcsv_validate_config(const embcsv_config_t *cfg) {
     if (!cfg) return EMBCSV_EINVAL;
@@ -22,7 +21,8 @@ static embcsv_status_t embcsv_validate_config(const embcsv_config_t *cfg) {
     if ((cfg->slot_size < 2U) || (cfg->slot_count == 0U)) return EMBCSV_ECONFIG;
     if ((size_t)cfg->slot_count > (cfg->buffer_size / (size_t)cfg->slot_size)) return EMBCSV_ECONFIG;
     if ((size_t)cfg->slot_count > (cfg->slots_size / sizeof(embcsv_slot_meta_t))) return EMBCSV_ECONFIG;
-    if (cfg->float_precision > EMBCSV_MAX_F32_PRECISION) return EMBCSV_ECONFIG;
+    if (cfg->float_precision > EMBCSV_FLOAT_F32_MAX_PRECISION) return EMBCSV_ECONFIG;
+    if (cfg->double_precision > EMBCSV_FLOAT_F64_MAX_PRECISION) return EMBCSV_ECONFIG;
 
     return EMBCSV_OK;
 }
@@ -470,21 +470,26 @@ embcsv_status_t embcsv_add_u64(embcsv_t *csv, uint64_t value) {
 }
 
 embcsv_status_t embcsv_add_f32(embcsv_t *csv, float value) {
-    char tmp[EMBCSV_F32_TMP_SIZE];
+    char tmp[EMBCSV_FLOAT_BUFFER_SIZE];
+    size_t len = 0U;
 
     if (csv == NULL) return EMBCSV_EINVAL;
-
     if (csv->state != EMBCSV_STATE_BUILDING_ROW) return EMBCSV_ESTATE;
 
     embcsv_slot_meta_t *slot = &csv->slots[csv->producer_index];
 
     if (slot->state != EMBCSV_SLOT_FILLING) return EMBCSV_ESTATE;
 
-    int formatted_len = snprintf(tmp, sizeof(tmp), "%.*f", (int)csv->float_precision, (double)value);
+    embcsv_float_status_t format_status =
+        embcsv_float_format_f32(
+            value,
+            csv->float_precision,
+            tmp,
+            sizeof(tmp),
+            &len);
 
-    if ((formatted_len < 0) || ((size_t)formatted_len >= sizeof(tmp))) return EMBCSV_EINVAL;
+    if (format_status != EMBCSV_FLOAT_OK) return EMBCSV_ESTATE;
 
-    size_t len = (size_t)formatted_len;
     size_t required = len;
 
     if (csv->row_has_field != 0U) required += 1U;
@@ -495,15 +500,16 @@ embcsv_status_t embcsv_add_f32(embcsv_t *csv, float value) {
         return EMBCSV_EROW_TOO_LARGE;
     }
 
-    uint8_t *payload = csv->buffer + ((size_t)csv->producer_index * (size_t)csv->slot_size);
+    uint8_t *payload =
+        csv->buffer +
+        ((size_t)csv->producer_index * (size_t)csv->slot_size);
 
     size_t write_pos = slot->len;
 
     if (csv->row_has_field != 0U) payload[write_pos++] = ',';
 
-    for (size_t i = 0U; i < len; ++i) {
-        payload[write_pos++] = (uint8_t)tmp[i];
-    }
+    memcpy(&payload[write_pos], tmp, len);
+    write_pos += len;
 
     slot->len = (uint16_t)write_pos;
     csv->row_has_field = 1U;
@@ -512,19 +518,26 @@ embcsv_status_t embcsv_add_f32(embcsv_t *csv, float value) {
 }
 
 embcsv_status_t embcsv_add_f64(embcsv_t *csv, double value) {
-    if (csv == NULL) return EMBCSV_EINVAL;
+    char tmp[EMBCSV_FLOAT_BUFFER_SIZE];
+    size_t len = 0U;
 
+    if (csv == NULL) return EMBCSV_EINVAL;
     if (csv->state != EMBCSV_STATE_BUILDING_ROW) return EMBCSV_ESTATE;
 
     embcsv_slot_meta_t *slot = &csv->slots[csv->producer_index];
 
     if (slot->state != EMBCSV_SLOT_FILLING) return EMBCSV_ESTATE;
 
-    int formatted_len = snprintf(NULL, 0U, "%.*f", (int)csv->double_precision, value);
+    embcsv_float_status_t format_status =
+        embcsv_float_format_f64(
+            value,
+            csv->double_precision,
+            tmp,
+            sizeof(tmp),
+            &len);
 
-    if (formatted_len < 0) return EMBCSV_EINVAL;
+    if (format_status != EMBCSV_FLOAT_OK) return EMBCSV_ESTATE;
 
-    size_t len = (size_t)formatted_len;
     size_t required = len;
 
     if (csv->row_has_field != 0U) required += 1U;
@@ -535,16 +548,15 @@ embcsv_status_t embcsv_add_f64(embcsv_t *csv, double value) {
         return EMBCSV_EROW_TOO_LARGE;
     }
 
-    uint8_t *payload = csv->buffer + ((size_t)csv->producer_index * (size_t)csv->slot_size);
+    uint8_t *payload =
+        csv->buffer +
+        ((size_t)csv->producer_index * (size_t)csv->slot_size);
 
     size_t write_pos = slot->len;
 
     if (csv->row_has_field != 0U) payload[write_pos++] = ',';
 
-    formatted_len = snprintf((char *)&payload[write_pos], len + 1U, "%.*f", (int)csv->double_precision, value);
-
-    if (formatted_len < 0) return EMBCSV_EINVAL;
-
+    memcpy(&payload[write_pos], tmp, len);
     write_pos += len;
 
     slot->len = (uint16_t)write_pos;
