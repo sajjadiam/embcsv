@@ -291,8 +291,11 @@ static void test_float_specials_c_locale(void)
     assert(embcsv_end_row(&csv) == EMBCSV_OK);
     assert(embcsv_process(&csv) == EMBCSV_OK);
 
-    fwrite(sink.out, 1U, sink.out_len, stdout);
-    putchar('\n');
+    {
+        const char expected[] = "nan,inf,-inf\r\n";
+        assert(sink.out_len == (sizeof(expected) - 1U));
+        assert(memcmp(sink.out, expected, sizeof(expected) - 1U) == 0);
+    }
 }
 
 static void test_float_locale_hazard(void)
@@ -316,11 +319,11 @@ static void test_float_locale_hazard(void)
     assert(embcsv_process(&csv) == EMBCSV_OK);
 
     /*
-     * Current implementation uses locale-sensitive snprintf("%f").
-     * Under de_DE.UTF-8 this should expose the CSV delimiter hazard.
+     * Float formatting is locale-independent. The decimal separator must
+     * remain '.' even when LC_NUMERIC uses a comma decimal separator.
      */
     {
-        const char expected[] = "1,25\r\n";
+        const char expected[] = "1.25\r\n";
         assert(sink.out_len == (sizeof(expected) - 1U));
         assert(memcmp(sink.out, expected, sizeof(expected) - 1U) == 0);
     }
