@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <locale.h>
+#include <math.h>
 
 typedef struct
 {
@@ -14,6 +16,7 @@ typedef struct
     embcsv_sink_done_fn done_fn;
     void *done_ctx;
     embcsv_slot_id_t done_slot;
+    unsigned submit_count;
 } test_sink_ctx_t;
 
 static embcsv_status_t test_submit(
@@ -27,6 +30,8 @@ static embcsv_status_t test_submit(
     assert(req != NULL);
     assert(completion != NULL);
     assert(req->data != NULL);
+
+    s->submit_count++;
 
     if (s->async_mode != 0)
     {
@@ -218,6 +223,111 @@ static void test_async_success(void)
     assert(embcsv_process(&csv) == EMBCSV_OK);
 }
 
+
+static void test_async_error_retry(void)
+{
+    uint8_t buffer[2U * 32U];
+    embcsv_slot_meta_t slots[2];
+    embcsv_t csv;
+    test_sink_ctx_t sink = {0};
+    embcsv_config_t cfg = make_config(
+        buffer, sizeof(buffer),
+        slots, sizeof(slots),
+        32U, 2U, &sink);
+
+    sink.async_mode = 1;
+
+    assert(embcsv_init(&csv, &cfg) == EMBCSV_OK);
+    assert(embcsv_begin_row(&csv) == EMBCSV_OK);
+    assert(embcsv_add_string(&csv, "retry-me") == EMBCSV_OK);
+    assert(embcsv_end_row(&csv) == EMBCSV_OK);
+
+    assert(embcsv_process(&csv) == EMBCSV_PENDING);
+    assert(slots[0].state == EMBCSV_SLOT_IN_FLIGHT);
+    assert(sink.submit_count == 1U);
+
+    sink.done_fn(sink.done_ctx, sink.done_slot, EMBCSV_EIO);
+
+    assert(slots[0].state == EMBCSV_SLOT_READY);
+    assert(csv.consumer_index == 0U);
+    assert(csv.async_status == EMBCSV_EIO);
+
+    /* First call reports the latched error and does not retry yet. */
+    assert(embcsv_process(&csv) == EMBCSV_EIO);
+    assert(csv.async_status == EMBCSV_OK);
+    assert(slots[0].state == EMBCSV_SLOT_READY);
+    assert(sink.submit_count == 1U);
+
+    /* Next call retries the preserved record. */
+    assert(embcsv_process(&csv) == EMBCSV_PENDING);
+    assert(slots[0].state == EMBCSV_SLOT_IN_FLIGHT);
+    assert(sink.submit_count == 2U);
+
+    sink.done_fn(sink.done_ctx, sink.done_slot, EMBCSV_OK);
+
+    assert(slots[0].state == EMBCSV_SLOT_FREE);
+    assert(csv.consumer_index == 1U);
+    assert(embcsv_process(&csv) == EMBCSV_OK);
+}
+
+static void test_float_specials_c_locale(void)
+{
+    uint8_t buffer[4U * 64U];
+    embcsv_slot_meta_t slots[4];
+    embcsv_t csv;
+    test_sink_ctx_t sink = {0};
+    embcsv_config_t cfg = make_config(
+        buffer, sizeof(buffer),
+        slots, sizeof(slots),
+        64U, 4U, &sink);
+
+    assert(setlocale(LC_NUMERIC, "C") != NULL);
+    assert(embcsv_init(&csv, &cfg) == EMBCSV_OK);
+
+    assert(embcsv_begin_row(&csv) == EMBCSV_OK);
+    assert(embcsv_add_f32(&csv, NAN) == EMBCSV_OK);
+    assert(embcsv_add_f32(&csv, INFINITY) == EMBCSV_OK);
+    assert(embcsv_add_f64(&csv, -INFINITY) == EMBCSV_OK);
+    assert(embcsv_end_row(&csv) == EMBCSV_OK);
+    assert(embcsv_process(&csv) == EMBCSV_OK);
+
+    fwrite(sink.out, 1U, sink.out_len, stdout);
+    putchar('\n');
+}
+
+static void test_float_locale_hazard(void)
+{
+    uint8_t buffer[2U * 64U];
+    embcsv_slot_meta_t slots[2];
+    embcsv_t csv;
+    test_sink_ctx_t sink = {0};
+    embcsv_config_t cfg = make_config(
+        buffer, sizeof(buffer),
+        slots, sizeof(slots),
+        64U, 2U, &sink);
+
+    const char *loc = setlocale(LC_NUMERIC, "de_DE.UTF-8");
+    assert(loc != NULL);
+
+    assert(embcsv_init(&csv, &cfg) == EMBCSV_OK);
+    assert(embcsv_begin_row(&csv) == EMBCSV_OK);
+    assert(embcsv_add_f32(&csv, 1.25f) == EMBCSV_OK);
+    assert(embcsv_end_row(&csv) == EMBCSV_OK);
+    assert(embcsv_process(&csv) == EMBCSV_OK);
+
+    /*
+     * Current implementation uses locale-sensitive snprintf("%f").
+     * Under de_DE.UTF-8 this should expose the CSV delimiter hazard.
+     */
+    {
+        const char expected[] = "1,25\r\n";
+        assert(sink.out_len == (sizeof(expected) - 1U));
+        assert(memcmp(sink.out, expected, sizeof(expected) - 1U) == 0);
+    }
+
+    assert(setlocale(LC_NUMERIC, "C") != NULL);
+}
+
 int main(void)
 {
     test_sync_basic();
@@ -225,6 +335,9 @@ int main(void)
     test_capacity_transactional();
     test_queue_wrap_sync();
     test_async_success();
+    test_async_error_retry();
+    test_float_specials_c_locale();
+    test_float_locale_hazard();
 
     puts("embcsv smoke tests: PASS");
     return 0;
