@@ -77,15 +77,19 @@ static void embcsv_on_sink_done(void *ctx, embcsv_slot_id_t slot_id, embcsv_stat
 
     /*
      * A completion callback must contain a final result.
-     * EMBCSV_PENDING is therefore invalid here.
+     *
+     * EMBCSV_PENDING and any other positive status are invalid here.
+     * Return the record to READY so the application can recover and retry
+     * after embcsv_process() reports the protocol error.
      */
-    if (status == EMBCSV_PENDING) {
+    if (status > EMBCSV_OK) {
+        slot->state = EMBCSV_SLOT_READY;
         csv->async_status = EMBCSV_ESTATE;
         return;
     }
 
     /*
-     * Preserve the record for a future retry.
+     * Preserve the record for a future retry after a backend failure.
      */
     slot->state = EMBCSV_SLOT_READY;
     csv->async_status = status;
