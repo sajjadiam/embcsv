@@ -3,7 +3,7 @@ name: embcsv smoke
 on:
   push:
     branches:
-      - chatgpt-smoke-test
+      - main
   workflow_dispatch:
 
 jobs:
@@ -24,8 +24,8 @@ jobs:
             -Wshadow -Wformat=2 -Wcast-align \
             -Wconversion -Wsign-conversion \
             -Werror \
-            -Iinclude \
-            src/embcsv.c tests/smoke.c \
+            -Iinclude -Isrc \
+            src/embcsv.c src/embcsv_float.c tests/smoke.c \
             -o build/embcsv-smoke
 
       - name: Run smoke tests
