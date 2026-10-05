@@ -1,0 +1,32 @@
+name: embcsv smoke
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate German locale
+        run: |
+          sudo locale-gen de_DE.UTF-8
+
+      - name: Build with strict warnings
+        run: |
+          mkdir -p build
+          gcc -std=c11 \
+            -Wall -Wextra -Wpedantic \
+            -Wshadow -Wformat=2 -Wcast-align \
+            -Wconversion -Wsign-conversion \
+            -Werror \
+            -Iinclude -Isrc \
+            src/embcsv.c src/embcsv_float.c tests/smoke.c \
+            -o build/embcsv-smoke
+
+      - name: Run smoke tests
+        run: ./build/embcsv-smoke
