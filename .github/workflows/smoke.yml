@@ -1,32 +1,54 @@
-name: embcsv smoke
+name: embcsv software tests
 
 on:
   push:
     branches:
       - main
+      - chatgpt-test-suite
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  smoke:
+  strict:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Generate German locale
-        run: |
-          sudo locale-gen de_DE.UTF-8
+        run: sudo locale-gen de_DE.UTF-8
 
-      - name: Build with strict warnings
+      - name: Build core tests with strict warnings
         run: |
           mkdir -p build
-          gcc -std=c11 \
-            -Wall -Wextra -Wpedantic \
-            -Wshadow -Wformat=2 -Wcast-align \
-            -Wconversion -Wsign-conversion \
-            -Werror \
-            -Iinclude -Isrc \
-            src/embcsv.c src/embcsv_float.c tests/smoke.c \
-            -o build/embcsv-smoke
+          gcc -std=c11             -Wall -Wextra -Wpedantic             -Wshadow -Wformat=2 -Wcast-align             -Wconversion -Wsign-conversion             -Werror             -Iinclude -Isrc             src/embcsv.c src/embcsv_float.c tests/smoke.c             -lm             -o build/embcsv-smoke
 
-      - name: Run smoke tests
+      - name: Build float formatter tests with strict warnings
+        run: |
+          gcc -std=c11             -Wall -Wextra -Wpedantic             -Wshadow -Wformat=2 -Wcast-align             -Wconversion -Wsign-conversion             -Werror             -Isrc             src/embcsv_float.c tests/float_format.c             -lm             -o build/embcsv-float-test
+
+      - name: Run core tests
         run: ./build/embcsv-smoke
+
+      - name: Run float formatter tests
+        run: ./build/embcsv-float-test
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate German locale
+        run: sudo locale-gen de_DE.UTF-8
+
+      - name: Build with ASan and UBSan
+        run: |
+          mkdir -p build
+          gcc -std=c11 -O1 -g             -Wall -Wextra -Wpedantic -Werror             -fsanitize=address,undefined             -fno-omit-frame-pointer             -Iinclude -Isrc             src/embcsv.c src/embcsv_float.c tests/smoke.c             -lm             -o build/embcsv-smoke-sanitize
+
+          gcc -std=c11 -O1 -g             -Wall -Wextra -Wpedantic -Werror             -fsanitize=address,undefined             -fno-omit-frame-pointer             -Isrc             src/embcsv_float.c tests/float_format.c             -lm             -o build/embcsv-float-test-sanitize
+
+      - name: Run core tests under sanitizers
+        run: ./build/embcsv-smoke-sanitize
+
+      - name: Run formatter tests under sanitizers
+        run: ./build/embcsv-float-test-sanitize
